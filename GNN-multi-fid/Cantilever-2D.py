@@ -1,64 +1,79 @@
 # fenics solver for linear elasticity
-# ref: https://jorgensd.github.io/dolfinx-tutorial/chapter2/linearelasticity_code.html
-
 import numpy as np
-from dolfinx import *
-import ufl
-import meshio
+from fenics import *
+import math
 
-def C2D(lmd,mu,case='plane-strain'):
-    if case == 'plane-strain':
-        lmd =  lmd
-    elif case == 'plane-stress':
-        lmd = 2*lmd*mu/(lmd+2*mu)
-    return np.array([[lmd + 2*mu, lmd, 0],[lmd,lmd + 2*mu,0],[0,0,mu]])
+# sym-ed gradient tensor (strain)
+def epsilon(u):
+    return sym(grad(u)) 
+
+# isotropic stress
+def sigma(u, lmd, mu):
+    return 2*mu*epsilon(u) + lmd * div(u) * Identity(u.geometric_dimension()) 
 
 # define external loading components
-fx,fy = 0,-0.1
+fx,fy = 0,-10
 
 # define material properties
 E  = 1e6   # young's modulus 
 nu = 0.3   # possion's ratio
 
+# load mesh
+#mesh = Mesh("Mesh_info/canti2D.xml")
+mesh = RectangleMesh( Point(0, 0), Point(5, 1), 100, 20, diagonal="right")
 # lame parameters
 lmd = E*nu/ ( (1+nu)*(1-2*nu) )
 mu  = E/ ( 2*(1+nu) )
 
+lmd = 2*lmd*mu/(lmd+2*mu) # changed due to plane stress
 
-# sym-ed gradient tensor
-def epsilon(u):
-    return ufl.sym(ufl.grad(u)) 
+l = 5 # length
+H = 1 # width
 
 # discretization details
-p         =  1        # polynomial order
+p         = 3       # polynomial order
 
-# construct the mesh obj
-Mesh = meshio.read("Mesh_info/beam.msh")
-
-# define function space
-U    = fem.FunctionSpace(Mesh, ("CG", p))
+# define function space 
+U   = VectorFunctionSpace(mesh, "CG", p) 
 
 # define boundary condtion
 # x[0] ~ 0 is clamped
-def X_L(x):
-    return np.isclose(x[0], 0)
+def X_L(x,on_boundary):
+    return on_boundary and np.isclose(x[0], 0)
 
-# locate boundary facets
-BC_dim = Mesh.topology.dim - 1
-boundary_facets = mesh.locate_entities_boundary(Mesh, BC_dim, X_L)
-
-# enforce boundary condition
-u_Xl = np.array([0,0], dtype=ScalarType)
-bc   = fem.dirichletbc(u_Xl, fem.locate_dofs_topological(U, BC_dim, boundary_facets), U)
+bc   = DirichletBC(U, Constant((0.,0.)), X_L)
 
 #------------------start to build to weak form----------------#
 
 # trial and test function are form the same functional space
-u = ufl.TrialFunction(U)
-v = ufl.TestFunction(U)
+u = TrialFunction(U)
+v = TestFunction(U)
 
 # external loading
-f = fem.Constant(domain, ScalarType((0, fy)))
+f = Constant((0,fy))
 
-A = inner(dot(C2D(lmd,mu,'plane-stress'),epsilon(u)),epsilon(v))*dx
+# set bilinear form
+A = inner(sigma(u, lmd, mu) , epsilon(v))*dx
 
+# set linear form
+L = dot(f, v) * dx 
+
+
+
+# get the problem
+u_h = Function(U)
+solve(A==L, u_h, bc)
+
+sol_save = File("p="+str(p)+"-Displacement.pvd")
+sol_save << u_h
+
+# calculate L2 error 
+W = 0.001
+I = H**3*W/12
+x = SpatialCoordinate(mesh)
+
+ux_exact = 0.0
+uy_exact = fy*x[0]*x[0]/24/E/I*(6*l*l-4*l*x[0] + x[0]*x[0])
+u_exact = as_vector((ux_exact,uy_exact))
+L2_error = math.sqrt(assemble(inner(u_h-u_exact,u_h-u_exact)*dx)  )
+print(L2_error)
