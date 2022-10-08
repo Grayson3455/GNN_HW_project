@@ -17,7 +17,7 @@ r_0 = 0.09
 r_i = 0.075
 
 domain = Circle(Point(0,0), r_0)-Circle(Point(0,0), r_i)
-mesh = generate_mesh(domain, 120)
+mesh = generate_mesh(domain, 80)
 
 # define material properties
 E  = 200e9   # young's modulus 
@@ -45,7 +45,7 @@ U   = VectorFunctionSpace(mesh, "CG", p)
 # Neumann bc only
 class arc(SubDomain):
     def inside(self, x, on_boundary):
-        return on_boundary and near(x[0]**2 + x[1]**2, r_i**2)
+        return on_boundary and near( (x[0]**2 + x[1]**2)**0.5, r_i)
 
 Arc_neu = arc()
 Neumann_arc = MeshFunction("size_t", mesh, 1) # 1 means line
