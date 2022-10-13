@@ -27,12 +27,15 @@ os.makedirs(path2,exist_ok=True)
 path3  = 'Partitioned_Mesh/'
 os.makedirs(path3,exist_ok=True)
 
+
+# High fid mesh target
+mesh_name =  "Annular/annular_lv3.msh" 
+
 #------------------------Step1--------------------------------#
 #Get geometry and discretization: gmsh and read with meshio
 #Credit: https://pypi.org/project/meshio/
 
-if rank == 0:
-	mesh_name =  "Meshes/Full-circle.msh"  
+if rank == 0: 
 	Mesh      =  meshio.read(mesh_name)  		# import mesh
 	Cells     =  (Mesh.cells_dict)['triangle']  # tri3
 	Points    =  Mesh.points                    # nodal points
