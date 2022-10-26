@@ -8,7 +8,7 @@ import meshio
 # Outputs:
 #        cells: list of finite element d labels
 #        points: nodal coordinates
-#        A     : the adj matrix of this mesh graph
+#        AN     : neighbor information of each node
 
 def Mesh_info_extraction2D(mesh_name):
 	
@@ -31,7 +31,14 @@ def Mesh_info_extraction2D(mesh_name):
 			# loop neighbors of the current vertex
 			for q in neighbors:
 				A[p,q] = 1
-				A[q,p] = 1
+				A[q,p] = 1 # we are considering directed graph
 
-	return Cells, Points, A
+	# loop thorough nodes
+	AN = {}
+	for i in range(len(Points)):
+		# find neighbors of node i
+		neighbors = np.where(A[i,:] == 1)[0]
+		AN[str(i)] = neighbors
+
+	return Cells, Points, AN
 

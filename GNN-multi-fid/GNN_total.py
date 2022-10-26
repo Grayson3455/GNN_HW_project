@@ -4,6 +4,11 @@ import torch
 from Mesh_info.Mesh_Tools.Mesh_connectivity import *
 import os
 from GNN_tools.GNN import *
+from GNN_tools.DNN_tools import *
+import math
+
+# Note: no idea how to build the training and testing dataset, tbd 
+# this code is only build for a ``big regression"" problem
 
 # determine if to use gpu
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu") 
@@ -22,27 +27,22 @@ High_Dis   = (High_data.point_data)['f_72'] # displacement solution
 
 #----------load mesh for accessing connectivity information----------#
 mesh_name =  "Mesh_info/Annular/annular_lv3.msh"  
-Cells, Points, Adj = Mesh_info_extraction2D(mesh_name)
+Cells, Points, AN = Mesh_info_extraction2D(mesh_name)
 
-#---------------------Get the maximum neighbor numbers-----------------#
-# Note: we need to pad zeros 
-# loop thorough nodes
-# max_n = 0
-# for i in range(len(Points)):
+# tensorize
+X = torch.from_numpy(Low_Dis).float().to(device)
+Y = torch.from_numpy(High_Dis).float().to(device)
 
-# 	# find neighbors of node i
-# 	neighbors = np.where(Adj[i,:] == 1)[0]
+# scale the data, using max-min scaler
+scale_minX, scale_maxX, X = max_min_scaling(X)
+scale_minY, scale_maxY, Y = max_min_scaling(Y)
 
-# 	if len(neighbors) >= max_n:
-
-# 		max_n = len(neighbors)
-
-input_size_Edge  = 6 
+input_size_Edge  = 6 # vp cat with vq
 output_size_node = 3
 
 # start to build msg passing neural network
 for learning_rate in [1e-3]:        # search learning rate
-	for msg_passing in [2]:         # search for msg passing rounds
+	for msg_passing in [3]:         # search for msg passing rounds
 
 		# create folder to save the trained model
 		Ori_PATH = 'Model_save/' 
@@ -55,7 +55,7 @@ for learning_rate in [1e-3]:        # search learning rate
 
 		# other hyper-para spec
 		lr_min      = 1e-6              # keep the minimal learning rate the same, avoiding updates that is too small
-		decay       = 0.998            	# learning rate decay rate
+		decay       = 0.995            	# learning rate decay rate
 		
 		# call model
 		model = MsgPassingNN(device, input_size_Edge, output_size_node, msg_passing)
@@ -71,6 +71,7 @@ for learning_rate in [1e-3]:        # search learning rate
 
 		# calculate corresponding epoch number
 		num_epochs = int(math.log(lr_min/learning_rate, decay))
+		#num_epochs = 51
 		print('Number of epoch  is: ' + str(num_epochs))
 
 		# define optimizer
@@ -81,4 +82,37 @@ for learning_rate in [1e-3]:        # search learning rate
 		scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda1) # define lr scheduler with the optim
 
 
+		#-------------training--prepare--------------------#
+		# loss and accuracy saves placeholders
+		train_save   = [] # epoch-wise training loss save 
+		train_acc_save   = [] # epoch-wise training accuracy save 
 
+		#--------------------------Start-training----------------------------------#
+		for epoch in range(num_epochs):
+
+			#-----------------Train steps--------------#
+			model, train_loss_per_epoch, train_acc_per_epoch = GNN_train(device, model, criterion, optimizer, \
+																X, Y, Cells, Points, AN)
+
+			# save training results per epoch
+			train_save.append(train_loss_per_epoch)
+			train_acc_save.append(train_acc_per_epoch)
+
+			# print out values for training stats
+			if epoch%50 == 0:
+				print("Training: Epoch: %d, mse loss: %1.5e" % (epoch, train_save[epoch]) ,\
+					", mse acc : %1.5f" % (train_acc_save[epoch]), \
+					', lr=' + str(optimizer.param_groups[0]['lr']))
+
+			# update learning rate
+			scheduler.step()		
+
+
+		# save the model
+		model_save_name   = PATH + '/model.pth'
+		torch.save(model.state_dict(), model_save_name)
+
+		# plot loss curves
+		train_save = (torch.FloatTensor(train_save)).cpu()
+		train_acc_save = (torch.FloatTensor(train_acc_save)).cpu()
+		simple_loss_plot(PATH, train_save, train_acc_save)
