@@ -15,15 +15,27 @@ warnings.simplefilter(action='ignore', category=UserWarning)
 from chainer_chemistry import datasets
 from chainer_chemistry.dataset.preprocessors.ggnn_preprocessor import GGNNPreprocessor
 
+#------------------------------------------------------------------------
+# set tensor type to double
+torch.set_default_tensor_type(torch.DoubleTensor)
+from matplotlib import pyplot as plt
+#------------------------------------------------------------------------
 
 """
     load data
 """
 #--------------------------------------------------------------------------------------------#
 dataset, dataset_smiles = datasets.get_qm9(GGNNPreprocessor(kekulize=True), return_smiles=True,
-                                           target_index=np.random.choice(range(133000), 500 , False))
-# change it from 100 --> 500 to get enough training samples
+                                           target_index=np.random.choice(range(133000), 5000 , False))
 #--------------------------------------------------------------------------------------------#
+
+
+# Gather testing dataset
+#-----------------------------------------------------------------------------------------------#
+Tdataset, Tdataset_smiles = datasets.get_qm9(GGNNPreprocessor(kekulize=True), return_smiles=True,
+                                           target_index=np.random.choice(range(133000), 1000 , False))
+#-----------------------------------------------------------------------------------------------#
+
 
 V = 9
 atom_types = [6, 8, 7, 9, 1]
@@ -57,6 +69,18 @@ sigs = torch.stack(list(map(sig, dataset)))
 prop = torch.stack(list(map(target, dataset)))[:, 5]
 
 
+#--------------Gather testing data---------------------#
+# batched adjacency matrices
+Tadjs = torch.stack(list(map(adj, Tdataset)))
+
+# batched node embeddings as one-hot vec, the last one is alawys H
+Tsigs = torch.stack(list(map(sig, Tdataset)))
+
+
+Tprop = torch.stack(list(map(target, Tdataset)))[:, 5]
+#------------------------------------------------------#
+
+
 
 class GCN:
     """
@@ -65,7 +89,6 @@ class GCN:
     def __init__(self, in_features, out_features):
         # -- initialize weight
         
-
         #---------------------------------------------------------------------------#
         self.in_features  = in_features
         self.out_features = out_features 
@@ -85,21 +108,21 @@ class GCN:
         # -- GCN propagation rule
 
         #----------------------------------------------#
-        
+        dim = A.shape[1]
+        I   = torch.eye(dim).reshape((1,dim,dim)) # prepare identity matrix for self-loop
+        I   = I.repeat(A.shape[0],1,1)            # create batched identity matrix
 
-        # find degree matrix (batched version)
-        D = torch.zeros_like(A)
-        d = torch.sum(A, dim=1) 
-        
+        A_tilde = A + I                           # add diagonals to adj matrices
 
+        # find degree matrix (batched version via dia_embed)
+        d = torch.sum(A_tilde, dim=1) 
+        D = torch.diag_embed(d)
 
-        # define identity matrix
-        I = torch.eye(len(D))
+        D_inv_sqrt = torch.sqrt(torch.linalg.inv(D))
+
         pass
 
-        #print(D.shape, I.shape, A.shape, H.shape, self.W.shape, self.b.shape)
-
-        return self.act( D.pow(-0.5) @  (I + A) @ D.pow(-0.5) @ H @ self.W + self.b )
+        return self.act(  D_inv_sqrt @  A_tilde @  D_inv_sqrt @ H @ self.W + self.b )
         #----------------------------------------------#
 
 
@@ -113,8 +136,9 @@ class GraphPooling:
     def __call__(self, H):
         # -- multi-set pooling operator
         pass
+
         #-------------------------------#
-        return torch.sum(H, dim = 0)
+        return torch.sum(H, dim = 1) # dim 1 is the node idx dimension
         #-------------------------------#
 
 class MyModel(nn.Module):
@@ -122,7 +146,7 @@ class MyModel(nn.Module):
         Regression  model
     """
     #----------------------------------------------#
-    def __init__(self, in_features, out_features ):
+    def __init__(self, in_features, out_features, in_linear, out_linear ):
     #----------------------------------------------#
         super(MyModel, self).__init__()
         # -- initialize layers
@@ -130,13 +154,14 @@ class MyModel(nn.Module):
         #------------------------------------------#
         self.GCN = GCN(in_features, out_features)
         self.GraphPooling = GraphPooling()
-        self.fc = nn.Linear(out_features, out_features)
+        self.fc = nn.Linear(in_linear, out_linear)
 
         #-------------------------------------------#
         pass
 
     def forward(self, A, h0):
         pass
+
 
         #-------------------------------------------#
         return self.fc( self.GraphPooling( self.GCN(A,h0) ) )
@@ -147,11 +172,13 @@ class MyModel(nn.Module):
 # -- Initialize the model, loss function, and the optimizer
 #--------------------------------------------#
 
-in_feature = 5  # length of one-hot vec
-out_feature = 1 # HOMO energy  
+GCN_in_feature = 5  # length of one-hot vec
+GCN_out_feature = 3 # number of GCN output features 
+Linear_in_feature = GCN_out_feature  # in-feature of the final linear layer
+Linear_out_feature = 1        # energy 
 
-model = MyModel(in_feature,out_feature)
-lr    = 0.01 # learning
+model = MyModel(GCN_in_feature, GCN_out_feature, Linear_in_feature, Linear_out_feature)
+lr    = 0.001 # learning
 
 MyLoss = nn.MSELoss() # it is a regression problem
 MyOptimizer = torch.optim.SGD(model.parameters(), lr = lr) # SGD optimizer
@@ -160,15 +187,77 @@ MyOptimizer = torch.optim.SGD(model.parameters(), lr = lr) # SGD optimizer
 
 
 # -- update parameters
+Loss_epochs = []
 for epoch in range(200):
-    for i in range(10):
+    for i in range(100):
 
         # -- predict
-        pred = model(adjs[i*10:(i+1)*10], sigs[i*10:(i+1)*10])
+        pred = model(adjs[i*50:(i+1)*50], sigs[i*50:(i+1)*50])  # batch size of 10
 
+        #--------------------------------------------------------------------------
         # -- loss
-        # loss = ?
 
+        # indexing the ground truth
+        truth = (prop[i*50:(i+1)*50]).reshape((-1,1)).double()
+
+        loss = MyLoss(pred, truth) # compute batched mse loss
         # -- optimize
 
+        # Zero-out the gradient
+        MyOptimizer.zero_grad()
+        
+        # back-prop
+        loss.backward()
+
+        # gradient update
+        MyOptimizer.step()
+
+    Loss_epochs.append(loss.item())
+        #--------------------------------------------------------------------------
+
 # -- plot loss
+plt.figure(figsize=(10, 8))
+plt.semilogy(Loss_epochs,'b', linewidth=2)
+plt.xlabel('Epoch',fontsize=16)
+plt.ylabel('log MSE loss',fontsize=16)
+plt.tick_params(labelsize=16)
+fig_name = 'P1-QE.png'
+plt.savefig(fig_name)
+plt.show()
+
+
+#------------------------------Testing----------------------------------------------#
+model.eval()  # eval mode
+
+pred_save = []
+truth_save = []
+with torch.no_grad():
+
+    for i in range(1000):
+
+        Tadj = Tadjs[i].unsqueeze(0) # add batch dim
+        Tsig = Tsigs[i].unsqueeze(0) # add batch dim
+
+        pred = model(Tadj, Tsig)  # batch size of 1
+
+        truth = (Tprop[i]).reshape((-1,1)).double()
+
+        pred_save.append(pred[0].item())
+        truth_save.append(truth[0].item())
+
+
+# -- plot scatter plot
+y = lambda x: x
+
+fig = plt.figure(figsize=(10, 8))
+ax  = fig.add_subplot(111)
+plt.scatter(np.array(pred_save), np.array(truth_save), marker='*', c='r')
+plt.plot(np.array(pred_save), y(np.array(pred_save)), 'k--')
+plt.xlabel('Predicted',fontsize=16)
+plt.ylabel('Truth',fontsize=16)
+plt.tick_params(labelsize=16)
+#ax.set_aspect('equal', adjustable='box')
+fig_name = 'P1-QF.png'
+plt.savefig(fig_name)
+plt.show()
+
