@@ -19,8 +19,11 @@ from chainer_chemistry.dataset.preprocessors.ggnn_preprocessor import GGNNPrepro
 """
     load data
 """
+#--------------------------------------------------------------------------------------------#
 dataset, dataset_smiles = datasets.get_qm9(GGNNPreprocessor(kekulize=True), return_smiles=True,
-                                           target_index=np.random.choice(range(133000), 100, False))
+                                           target_index=np.random.choice(range(133000), 500 , False))
+# change it from 100 --> 500 to get enough training samples
+#--------------------------------------------------------------------------------------------#
 
 V = 9
 atom_types = [6, 8, 7, 9, 1]
@@ -35,6 +38,7 @@ def adj(x):
 def sig(x):
     x = x[0]
     atoms = np.ones((V)).astype(float)
+    atoms[:len(x)] = x
     out = np.array([int(atom == atom_type) for atom_type in atom_types for atom in atoms]).astype(float)
     return torch.tensor(out).reshape(5, len(atoms)).T
 
@@ -43,10 +47,15 @@ def target(x):
     x = x[2]
     return torch.tensor(x)
 
-
+# batched adjacency matrices
 adjs = torch.stack(list(map(adj, dataset)))
+
+# batched node embeddings as one-hot vec, the last one is alawys H
 sigs = torch.stack(list(map(sig, dataset)))
+
+
 prop = torch.stack(list(map(target, dataset)))[:, 5]
+
 
 
 class GCN:
@@ -55,13 +64,43 @@ class GCN:
     """
     def __init__(self, in_features, out_features):
         # -- initialize weight
+        
+
+        #---------------------------------------------------------------------------#
+        self.in_features  = in_features
+        self.out_features = out_features 
+        self.W      = nn.Parameter(data=torch.randn(size=(self.in_features,self.out_features)), requires_grad=True)
+        self.b      = nn.Parameter(data=torch.randn(size=(self.out_features,)), requires_grad=True)
+        #---------------------------------------------------------------------------#
+        
         pass
 
+
         # -- non-linearity
+        #------------------#
+        self.act = nn.ReLU()
+        #------------------#
 
     def __call__(self, A, H):
         # -- GCN propagation rule
+
+        #----------------------------------------------#
+        
+
+        # find degree matrix (batched version)
+        D = torch.zeros_like(A)
+        d = torch.sum(A, dim=1) 
+        
+
+
+        # define identity matrix
+        I = torch.eye(len(D))
         pass
+
+        #print(D.shape, I.shape, A.shape, H.shape, self.W.shape, self.b.shape)
+
+        return self.act( D.pow(-0.5) @  (I + A) @ D.pow(-0.5) @ H @ self.W + self.b )
+        #----------------------------------------------#
 
 
 class GraphPooling:
@@ -74,28 +113,51 @@ class GraphPooling:
     def __call__(self, H):
         # -- multi-set pooling operator
         pass
-
+        #-------------------------------#
+        return torch.sum(H, dim = 0)
+        #-------------------------------#
 
 class MyModel(nn.Module):
     """
         Regression  model
     """
-    def __init__(self):
+    #----------------------------------------------#
+    def __init__(self, in_features, out_features ):
+    #----------------------------------------------#
         super(MyModel, self).__init__()
         # -- initialize layers
+
+        #------------------------------------------#
+        self.GCN = GCN(in_features, out_features)
+        self.GraphPooling = GraphPooling()
+        self.fc = nn.Linear(out_features, out_features)
+
+        #-------------------------------------------#
         pass
 
     def forward(self, A, h0):
         pass
 
-
+        #-------------------------------------------#
+        return self.fc( self.GraphPooling( self.GCN(A,h0) ) )
+        #--------------------------------------------#
 """
     Train
 """
 # -- Initialize the model, loss function, and the optimizer
-model = MyModel()
-# MyLoss =
-# MyOptimizer =
+#--------------------------------------------#
+
+in_feature = 5  # length of one-hot vec
+out_feature = 1 # HOMO energy  
+
+model = MyModel(in_feature,out_feature)
+lr    = 0.01 # learning
+
+MyLoss = nn.MSELoss() # it is a regression problem
+MyOptimizer = torch.optim.SGD(model.parameters(), lr = lr) # SGD optimizer
+
+#--------------------------------------------#
+
 
 # -- update parameters
 for epoch in range(200):
