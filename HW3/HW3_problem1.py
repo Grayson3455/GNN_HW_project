@@ -26,15 +26,9 @@ from matplotlib import pyplot as plt
 """
 #--------------------------------------------------------------------------------------------#
 dataset, dataset_smiles = datasets.get_qm9(GGNNPreprocessor(kekulize=True), return_smiles=True,
-                                           target_index=np.random.choice(range(133000), 5000 , False))
+                                           target_index=np.random.choice(range(133000), 6000 , False))
 #--------------------------------------------------------------------------------------------#
 
-
-# Gather testing dataset
-#-----------------------------------------------------------------------------------------------#
-Tdataset, Tdataset_smiles = datasets.get_qm9(GGNNPreprocessor(kekulize=True), return_smiles=True,
-                                           target_index=np.random.choice(range(133000), 1000 , False))
-#-----------------------------------------------------------------------------------------------#
 
 
 V = 9
@@ -67,19 +61,6 @@ sigs = torch.stack(list(map(sig, dataset)))
 
 
 prop = torch.stack(list(map(target, dataset)))[:, 5]
-
-
-#--------------Gather testing data---------------------#
-# batched adjacency matrices
-Tadjs = torch.stack(list(map(adj, Tdataset)))
-
-# batched node embeddings as one-hot vec, the last one is alawys H
-Tsigs = torch.stack(list(map(sig, Tdataset)))
-
-
-Tprop = torch.stack(list(map(target, Tdataset)))[:, 5]
-#------------------------------------------------------#
-
 
 
 class GCN:
@@ -235,12 +216,12 @@ with torch.no_grad():
 
     for i in range(1000):
 
-        Tadj = Tadjs[i].unsqueeze(0) # add batch dim
-        Tsig = Tsigs[i].unsqueeze(0) # add batch dim
+        Tadj = adjs[5000+i].unsqueeze(0) # add batch dim
+        Tsig = sigs[5000+i].unsqueeze(0) # add batch dim
 
         pred = model(Tadj, Tsig)  # batch size of 1
 
-        truth = (Tprop[i]).reshape((-1,1)).double()
+        truth = (prop[i]).reshape((-1,1)).double()
 
         pred_save.append(pred[0].item())
         truth_save.append(truth[0].item())
