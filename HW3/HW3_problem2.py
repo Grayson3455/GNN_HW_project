@@ -31,8 +31,8 @@ class GCN(nn.Module):
         #---------------------------------------------------------------------------#
         self.in_features  = in_features
         self.out_features = out_features 
-        self.W      = nn.Parameter(data=torch.randn(size=(self.in_features,self.out_features)), requires_grad=True)
-        self.b      = nn.Parameter(data=torch.randn(size=(self.out_features,)), requires_grad=True)
+        self.register_parameter(name='W', param=  nn.Parameter(data=torch.randn(size=(self.in_features,self.out_features)), requires_grad=True) ) 
+
         #---------------------------------------------------------------------------#
 
         pass
@@ -59,7 +59,7 @@ class GCN(nn.Module):
 
         pass
 
-        return self.act(  D_inv_sqrt @  A_tilde @  D_inv_sqrt @ H @ self.W + self.b )
+        return self.act(  D_inv_sqrt @  A_tilde @  D_inv_sqrt @ H @ self.W )#+ self.b )
         #----------------------------------------------#
 
 # define the first, single msg passing model

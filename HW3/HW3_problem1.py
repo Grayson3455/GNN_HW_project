@@ -63,18 +63,21 @@ sigs = torch.stack(list(map(sig, dataset)))
 prop = torch.stack(list(map(target, dataset)))[:, 5]
 
 
-class GCN:
+class GCN(nn.Module):
     """
         Graph convolutional layer
     """
     def __init__(self, in_features, out_features):
+        super(GCN, self).__init__()
         # -- initialize weight
         
         #---------------------------------------------------------------------------#
         self.in_features  = in_features
         self.out_features = out_features 
-        self.W      = nn.Parameter(data=torch.randn(size=(self.in_features,self.out_features)), requires_grad=True)
-        self.b      = nn.Parameter(data=torch.randn(size=(self.out_features,)), requires_grad=True)
+
+        self.register_parameter(name='W', param=  nn.Parameter(data=torch.randn(size=(self.in_features,self.out_features)), requires_grad=True) ) 
+        #self.register_parameter(name='b', param=  nn.Parameter(data=torch.randn(size=(self.out_features,)), requires_grad=True) ) 
+
         #---------------------------------------------------------------------------#
         
         pass
@@ -103,7 +106,7 @@ class GCN:
 
         pass
 
-        return self.act(  D_inv_sqrt @  A_tilde @  D_inv_sqrt @ H @ self.W + self.b )
+        return self.act(  D_inv_sqrt @  A_tilde @  D_inv_sqrt @ H @ self.W )#+ self.b )
         #----------------------------------------------#
 
 
@@ -159,27 +162,34 @@ Linear_in_feature = GCN_out_feature  # in-feature of the final linear layer
 Linear_out_feature = 1        # energy 
 
 model = MyModel(GCN_in_feature, GCN_out_feature, Linear_in_feature, Linear_out_feature)
-lr    = 0.001 # learning
+lr    = 0.005 # learning
 
 MyLoss = nn.MSELoss() # it is a regression problem
 MyOptimizer = torch.optim.SGD(model.parameters(), lr = lr) # SGD optimizer
+#MyOptimizer = torch.optim.Adam(model.parameters(), lr = lr) # SGD optimizer
 
 #--------------------------------------------#
-
+for name, param in model.named_parameters():
+    if param.requires_grad:
+        print(name, param.data)
 
 # -- update parameters
 Loss_epochs = []
+mini_B = 100
+B_size = int(5000/mini_B)
+
 for epoch in range(200):
-    for i in range(100):
+    #print(epoch)
+    for i in range(mini_B):
 
         # -- predict
-        pred = model(adjs[i*50:(i+1)*50], sigs[i*50:(i+1)*50])  # batch size of 10
+        pred = model(adjs[i*B_size:(i+1)*B_size], sigs[i*B_size:(i+1)*B_size])  # batch size of 10
 
         #--------------------------------------------------------------------------
         # -- loss
 
         # indexing the ground truth
-        truth = (prop[i*50:(i+1)*50]).reshape((-1,1)).double()
+        truth = (prop[i*B_size:(i+1)*B_size]).reshape((-1,1)).double()
 
         loss = MyLoss(pred, truth) # compute batched mse loss
         # -- optimize
@@ -209,6 +219,11 @@ plt.show()
 
 #------------------------------Testing----------------------------------------------#
 model.eval()  # eval mode
+
+
+for name, param in model.named_parameters():
+    if param.requires_grad:
+        print(name, param.data)
 
 pred_save = []
 truth_save = []
