@@ -49,6 +49,14 @@ mu  = E/ ( 2*(1+nu) )
 L = 10. # length of the cantilever
 H = 1.  # height of the cantilever
 h = 0.1 # mesh size
+
+
+if h == 0.1:
+    lv = 1
+if h == 0.5:
+    lv = 0
+
+
 corners = [ np.array([0,0]), np.array([L,H])]
 num_points = [int(L/h), int(H/h)]
 
@@ -92,7 +100,7 @@ L = ufl.dot(f, v) * ufl.dx
 problem = fem.petsc.LinearProblem(A, L, bcs=[bc_clamped], petsc_options={"ksp_type": "preonly", "pc_type": "lu"})
 uh = problem.solve()
 
-with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "Sol/Canti2D/canti2D.xdmf", "w") as f:
+with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "Sol/Canti2D/canti2D" + "-lv=" + str(lv) + ".xdmf", "w") as f:
     f.write_mesh(domain)
     f.write_function(uh)
 #-------------------------------------------------------------------------------------------#
