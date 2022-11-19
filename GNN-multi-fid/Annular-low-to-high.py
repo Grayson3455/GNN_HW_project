@@ -1,4 +1,5 @@
 # map low fidelity solution to high fidelity mesh
+# case: 2D annular
 
 # Solve low fid problem
 import numpy as np
