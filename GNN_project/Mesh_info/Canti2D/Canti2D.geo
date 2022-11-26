@@ -22,6 +22,6 @@ Plane Surface(1) = {1};
 //+
 Transfinite Surface {1} = {2, 1, 4, 3} Left;
 //+
-Transfinite Curve {4, 2} = 200 Using Progression 1;
+Transfinite Curve {4, 2} = 51 Using Progression 1;
 //+
-Transfinite Curve {1, 3} = 20 Using Progression 1;
+Transfinite Curve {1, 3} = 6 Using Progression 1;
