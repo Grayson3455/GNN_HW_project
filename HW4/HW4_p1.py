@@ -45,11 +45,12 @@ def spec_filter(j,lmd):
 		for i in range(2,J+1):
 			g_inside -= abs(j_more_than_2(i, lmd))**2 
 
-		return np.sqrt(g_inside)
+		#print(g_inside)
+
+		return np.sqrt(g_inside + 1e-12)
 
 	if j>=2 and j<=J:
 		return j_more_than_2(j, lmd)
-
 
 
 # start to plot
@@ -65,8 +66,11 @@ for j in range(1,J+1):
 		g_hat[j-1,i] = spec_filter(j, lmd)
 
 	plt.plot(LMD, g_hat[j-1,:], label = '$j$='+str(j),linewidth=2)
-plt.legend()
-plt.xlabel(r'$\lambda$', fontsize=24)
-plt.ylabel(r'$\widehat{g}_j$', fontsize=24)
-plt.show()
 
+fs = 24
+plt.rc('text',  usetex=True)
+plt.xlabel(r'$\lambda$', fontsize=fs)
+plt.ylabel(r'$\widehat{g}_j$', fontsize=fs)
+plt.tick_params(labelsize=fs-2)
+plt.legend(fontsize=fs-3)
+plt.savefig('P1.pdf')
