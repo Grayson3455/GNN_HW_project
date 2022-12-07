@@ -3,6 +3,7 @@ import torch
 from torch import nn
 import warnings
 import numpy as np
+from HW4_p1 import *
 #--------------------------------#
 
 # QM9 dataset loading from 
@@ -46,5 +47,74 @@ sigs = torch.stack(list(map(sig, dataset)))
 prop = torch.stack(list(map(target, dataset)))[:, 5]
 #------------------------------------------------------------------------------------------------------#
 
-print(sigs[5,:,:])
-print(prop.shape)
+
+# eta function as the average graph pooling operator 
+# input:
+#      f: feature
+def eta(f):
+    return 0
+
+# normalized laplacian matrix from the adjacency 
+# input:
+#       A: adjacency matrix
+# ouput:
+#       X: batched eigen vector
+#       LMD: batched eigen values
+def Normalized_Laplacian(A):
+
+    #----------------------------------------------#
+    # add self component
+    dim = A.shape[1]
+    I   = torch.eye(dim).reshape((1,dim,dim)) # prepare identity matrix for self-loop
+    I   = I.repeat(A.shape[0],1,1)            # create batched identity matrix
+
+    A_tilde = A + I                           # add diagonals to adj matrices
+
+    # find degree matrix (batched version via dia_embed)
+    d = torch.sum(A_tilde, dim=1) 
+    D = torch.diag_embed(d)
+
+    D_inv_sqrt = torch.sqrt(torch.linalg.inv(D))
+
+    # calculate laplacian matrix
+    Laplacian  = D-A_tilde
+
+    # calculate normalized laplacian matrix
+    L_sym      = D_inv_sqrt @ Laplacian @ D_inv_sqrt
+    
+    print(L_sym.shape)
+    # batched eigen decomposition for symm mat
+    LMD, X = torch.linalg.eigh(L_sym)
+
+    return LMD, X
+
+# apply fourier transform to the singnal
+# inputs:
+#       X: batched eigen vector
+#       LMD: batched eigen values
+#       f: signal
+#       j: scale label
+# outputs:
+#       f_hat: transformed signal
+
+def Fourier_transform(LMD,X,f,j):
+    
+    gj = torch.zeros(len(LMD))
+
+    for i in range(1,len(LMD)+1):
+        gj[i-1] = spec_filter(i, LMD[i-1])
+
+    return X @ gj @ torch.transpose(X, 1, 2) @ f
+
+
+LMD, X = Normalized_Laplacian(adjs[35])
+print(LMD.shape)
+f_hat  = Fourier_transform(LMD, X, sigs[35], 2)
+
+# start to construct zG
+L = 2
+J = 8
+
+LMD, X = Normalized_Laplacian(adjs)
+
+

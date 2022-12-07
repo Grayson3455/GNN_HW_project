@@ -53,24 +53,28 @@ def spec_filter(j,lmd):
 		return j_more_than_2(j, lmd)
 
 
-# start to plot
-plt.figure(figsize=(10,10))
 
-num   = 1000
-g_hat = np.zeros((J, num))
-LMD   = np.linspace(1e-12,lambda_max,num)
+if __name__=="__main__":
 
-for j in range(1,J+1):
-#for j in range(1,2):
-	for i, lmd in enumerate(LMD):
-		g_hat[j-1,i] = spec_filter(j, lmd)
+	# start to plot
+	plt.figure(figsize=(10,10))
 
-	plt.plot(LMD, g_hat[j-1,:], label = '$j$='+str(j),linewidth=2)
+	num   = 1000
+	g_hat = np.zeros((J, num))
+	LMD   = np.linspace(1e-12,lambda_max,num)
 
-fs = 24
-plt.rc('text',  usetex=True)
-plt.xlabel(r'$\lambda$', fontsize=fs)
-plt.ylabel(r'$\widehat{g}_j$', fontsize=fs)
-plt.tick_params(labelsize=fs-2)
-plt.legend(fontsize=fs-3)
-plt.savefig('P1.pdf')
+	for j in range(1,J+1):
+	#for j in range(1,2):
+		for i, lmd in enumerate(LMD):
+			g_hat[j-1,i] = spec_filter(j, lmd)
+
+		plt.plot(LMD, g_hat[j-1,:], label = '$j$='+str(j),linewidth=2)
+
+	fs = 24
+	plt.rc('text',  usetex=True)
+	plt.xlabel(r'$\lambda$', fontsize=fs)
+	plt.ylabel(r'$\widehat{g}_j$', fontsize=fs)
+	plt.tick_params(labelsize=fs-2)
+	plt.legend(fontsize=fs-3)
+	plt.savefig('P1.pdf')
+
