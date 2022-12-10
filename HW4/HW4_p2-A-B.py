@@ -4,6 +4,8 @@ from torch import nn
 import warnings
 import numpy as np
 from HW4_p1 import *
+from matplotlib import pyplot as plt
+from rdkit import Chem
 #--------------------------------#
 
 # QM9 dataset loading from 
@@ -16,8 +18,9 @@ from chainer_chemistry.dataset.preprocessors.ggnn_preprocessor import GGNNPrepro
 """
     load data
 """
+n_group = 10000
 dataset, dataset_smiles = datasets.get_qm9(GGNNPreprocessor(kekulize=True), return_smiles=True,
-                                           target_index=np.random.choice(range(133000), 100, False))
+                                           target_index=np.random.choice(range(133000), n_group, False))
 
 V = 9
 atom_types = [6, 8, 7, 9, 1]
@@ -41,10 +44,17 @@ def target(x):
     x = x[2]
     return torch.tensor(x)
 
+# code referred from: 
+# https://github.com/nshervt/ACMS-80770-Deep-Learning-with-Graphs/blob/trunk/Homework%204/Problem%202.py
+def Hbond(x):
+    mol = Chem.MolFromSmiles(x)
+    return torch.tensor(Chem.rdMolDescriptors.CalcNumHBA(mol))
 
-adjs = torch.stack(list(map(adj, dataset)))
-sigs = torch.stack(list(map(sig, dataset)))
-prop = torch.stack(list(map(target, dataset)))[:, 5]
+
+adjs   = torch.stack(list(map(adj, dataset)))
+sigs   = torch.stack(list(map(sig, dataset)))
+prop   = torch.stack(list(map(target, dataset)))[:, 5]
+prop_2 = torch.stack(list(map(Hbond, dataset_smiles)))
 #------------------------------------------------------------------------------------------------------#
 
 
@@ -52,7 +62,7 @@ prop = torch.stack(list(map(target, dataset)))[:, 5]
 # input:
 #      f: feature
 def eta(f):
-    return 0
+    return torch.mean(f, dim=1)#.unsqueeze(1) # mean over vertices
 
 # normalized laplacian matrix from the adjacency 
 # input:
@@ -82,11 +92,10 @@ def Normalized_Laplacian(A):
     # calculate normalized laplacian matrix
     L_sym      = D_inv_sqrt @ Laplacian @ D_inv_sqrt
     
-    print(L_sym.shape)
     # batched eigen decomposition for symm mat
     LMD, X = torch.linalg.eigh(L_sym)
 
-    return LMD, X
+    return LMD + 1e-15, X # machine precision 
 
 # apply fourier transform to the singnal
 # inputs:
@@ -98,23 +107,74 @@ def Normalized_Laplacian(A):
 #       f_hat: transformed signal
 
 def Fourier_transform(LMD,X,f,j):
-    
-    gj = torch.zeros(len(LMD))
+    # init
+    gj = torch.zeros(LMD.shape[0],LMD.shape[1]).double()
 
-    for i in range(1,len(LMD)+1):
-        gj[i-1] = spec_filter(i, LMD[i-1])
+    # batch loop
+    for b in range(LMD.shape[0]):
+        # eig loop
+        for i in range(LMD.shape[1]):
+            gj[b,i] = spec_filter(j, LMD[b,i])
 
-    return X @ gj @ torch.transpose(X, 1, 2) @ f
+    # make it as a diagonal mat
+    Gj = torch.diag_embed(gj)
 
+    t1 = torch.bmm(X, Gj)
 
-LMD, X = Normalized_Laplacian(adjs[35])
-print(LMD.shape)
-f_hat  = Fourier_transform(LMD, X, sigs[35], 2)
+    t2 = torch.bmm(t1, torch.transpose(X, 1, 2))
+
+    return torch.bmm(t2, f)
+
+# generate zG
+# Inputs:
+#       L: depth
+#       J: number of scales
+#       f: original signal
+#       LMD: eigenvalues
+#       X: eigenvectors
+# Output:
+#       zG: generated feature
+
+def zG_generation(L,J, f, LMD, X):
+
+    zG = eta(f) # init as z^0
+
+    for l in range(1,L+1):
+
+        # loop over j
+        for j in range(1,J+1):
+
+            result = torch.abs(Fourier_transform(LMD,X,f,j))
+
+            if l == 1: 
+                zG = torch.cat((zG, eta(result)), dim=1)
+            if l == 2:
+                for j2 in range(1,J+1):
+                    result2 = torch.abs(Fourier_transform(LMD,X,result,j2))
+                    zG = torch.cat((zG, eta(result2)), dim=1)
+    return zG
+
+#---------------- test ----------------#
+# LMD, X = Normalized_Laplacian(adjs[35:38])
+# f_hat  = Fourier_transform(LMD, X, sigs[35:38], 2)
+#--------------------------------------#
 
 # start to construct zG
 L = 2
 J = 8
 
+# take n samples
 LMD, X = Normalized_Laplacian(adjs)
+zG = zG_generation(L, J, sigs, LMD, X)
 
 
+# start to do pca, use the default function
+(U,S,V) = torch.pca_lowrank(zG) # pca decomposition
+twoDzG  = torch.matmul(zG, V[:, :2])  # feature reduction
+color   = prop_2  # use hydrogen-bond as colors
+
+# scatter plot
+plt.scatter(twoDzG[:,0], twoDzG[:,1], c=color)
+ax = plt.gca()
+ax.set_aspect('equal', adjustable='box')
+plt.savefig('P2_B.pdf')

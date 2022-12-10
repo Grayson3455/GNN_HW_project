@@ -14,7 +14,7 @@ a = R * np.log(lambda_max) / (J - R + 1)
 
 
 def Indicator(a,b):
-	if a >= 0 and a < b:
+	if -a >= 0 and -a < b:
 		return 1
 	else:
 		return 0 
@@ -27,7 +27,7 @@ def half_cosine_kernel(lmd):
 
 	for k in range(K + 1):
 
-		g += d[k] * np.cos( 2. * np.pi * k * (lmd/a - 0.5) ) * Indicator(lmd, a)
+		g += d[k] * np.cos( 2. * np.pi * k * (lmd/a + 0.5) ) * Indicator(lmd, a)
 
 	return g
 
@@ -36,7 +36,7 @@ def spec_filter(j,lmd):
 
 	def j_more_than_2(j,lmd):
 
-		return half_cosine_kernel(np.log(lmd) - a*(j-R)/R )
+		return half_cosine_kernel(np.log(lmd) - a*(j-1)/R )
 
 	if j ==  1:
 		
@@ -44,8 +44,6 @@ def spec_filter(j,lmd):
 
 		for i in range(2,J+1):
 			g_inside -= abs(j_more_than_2(i, lmd))**2 
-
-		#print(g_inside)
 
 		return np.sqrt(g_inside + 1e-12)
 
